@@ -83,6 +83,7 @@ contract PuppyRaffle is ERC721, Ownable {
         }
 
         // Check for duplicates
+        // @audit DoS
         for (uint256 i = 0; i < players.length - 1; i++) {
             for (uint256 j = i + 1; j < players.length; j++) {
                 require(players[i] != players[j], "PuppyRaffle: Duplicate player");
@@ -97,7 +98,7 @@ contract PuppyRaffle is ERC721, Ownable {
         address playerAddress = players[playerIndex];
         require(playerAddress == msg.sender, "PuppyRaffle: Only the player can refund");
         require(playerAddress != address(0), "PuppyRaffle: Player already refunded, or is not active");
-
+        // @audit Re-entrancy
         payable(msg.sender).sendValue(entranceFee);
 
         players[playerIndex] = address(0);
@@ -113,6 +114,7 @@ contract PuppyRaffle is ERC721, Ownable {
                 return i;
             }
         }
+        // @audit if the player is at index 0, it'll return 0 and a player might think they are not active!
         return 0;
     }
 
@@ -123,19 +125,24 @@ contract PuppyRaffle is ERC721, Ownable {
     /// @dev we reset the active players array after the winner is selected
     /// @dev we send 80% of the funds to the winner, the other 20% goes to the feeAddress
     function selectWinner() external {
+        // q Does this follow CEI
         require(block.timestamp >= raffleStartTime + raffleDuration, "PuppyRaffle: Raffle not over");
         require(players.length >= 4, "PuppyRaffle: Need at least 4 players");
+        // @audit randomness
+        // fixes: Chainlink VRF, Commit Reveal Scheme
         uint256 winnerIndex =
             uint256(keccak256(abi.encodePacked(msg.sender, block.timestamp, block.difficulty))) % players.length;
         address winner = players[winnerIndex];
         uint256 totalAmountCollected = players.length * entranceFee;
         uint256 prizePool = (totalAmountCollected * 80) / 100;
         uint256 fee = (totalAmountCollected * 20) / 100;
+        // @audit Overflow
         totalFees = totalFees + uint64(fee);
 
         uint256 tokenId = totalSupply();
 
         // We use a different RNG calculate from the winnerIndex to determine rarity
+        // @audit randomness
         uint256 rarity = uint256(keccak256(abi.encodePacked(msg.sender, block.difficulty))) % 100;
         if (rarity <= COMMON_RARITY) {
             tokenIdToRarity[tokenId] = COMMON_RARITY;
